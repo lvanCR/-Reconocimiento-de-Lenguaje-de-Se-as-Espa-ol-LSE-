@@ -3,6 +3,11 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import tensorflow as tf
+import av # Necesario para manejar frames con streamlit-webrtc
+
+# Librería para la cámara estable en entorno web
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode 
+
 
 # --- 1. CONFIGURACIÓN BÁSICA DE STREAMLIT ---
 st.set_page_config(
@@ -11,160 +16,152 @@ st.set_page_config(
     layout="wide"
 )
 
-# Título Principal
 st.title("🤟 Reconocimiento de Lenguaje de Señas Español (LSE)")
-st.markdown("### Detección y Clasificación en Tiempo Real")
+st.markdown("### Detección y Clasificación en Tiempo Real con WebRTC")
+
 
 # --- 2. CARGAR EL MODELO ENTRENADO ---
 MODEL_PATH = 'sign_language_mlp_model.h5' 
-try:
-    # Carga del modelo (st.cache_resource asegura que solo se cargue una vez)
-    # Movemos la confirmación a la barra lateral para no afectar el layout principal
-    @st.cache_resource
-    def load_model():
+@st.cache_resource
+def load_model():
+    """Carga el modelo una sola vez y lo almacena en caché."""
+    try:
         model = tf.keras.models.load_model(MODEL_PATH)
+        st.sidebar.success("✅ Modelo cargado correctamente.")
         return model
-    
-    model = load_model()
-    st.sidebar.success("✅ Modelo cargado correctamente.")
-except Exception as e:
-    st.error(f"❌ Error al cargar el modelo. Verifique la ruta '{MODEL_PATH}'.")
-    st.stop()
+    except Exception as e:
+        st.sidebar.error(f"❌ Error al cargar el modelo. Verifique la ruta '{MODEL_PATH}'.")
+        st.stop()
 
-# Definir las clases (Incluyendo la 'Ñ')
-# IMPORTANTE: Asegúrate de que el índice de 'Ñ' sea el mismo que usaste en tu entrenamiento.
-# Asumiendo que 'Ñ' es la última clase:
+model = load_model()
+
+# Definir las clases (Asegúrate que 'Ñ' esté en el índice correcto según tu entrenamiento)
 CLASSES = np.array(['A','B','C','D','E','F','G','I','K','L','M','N','O','P','Q','R','S','T','U', 'Ñ']) 
 
-# --- 3. INICIALIZAR MEDIAPIPE ---
-mp_hands = mp.solutions.hands
-mp_drawing = mp.solutions.drawing_utils
+# --- 3. CLASE PARA PROCESAR EL VIDEO EN TIEMPO REAL (WEBRTC) ---
 
-# --- 4. CONFIGURACIÓN DE INTERFAZ (COLUMNAS Y PLACEHOLDERS) ---
+class HandSignProcessor(VideoProcessorBase):
+    """Procesa cada frame de video, detecta landmarks y predice la seña."""
+    
+    def __init__(self):
+        # Inicializar MediaPipe Hands
+        self.mp_hands = mp.solutions.hands
+        self.hands = self.mp_hands.Hands(
+            model_complexity=1,
+            min_detection_confidence=0.7,
+            min_tracking_confidence=0.7)
+        self.mp_drawing = mp.solutions.drawing_utils
+        
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        """Método llamado por streamlit-webrtc para cada frame."""
+        
+        # Convertir el frame de AV (WebRTC) a un array NumPy (BGR)
+        image = frame.to_ndarray(format="bgr24")
+        
+        # 1. Preprocesamiento de la imagen
+        image = cv2.flip(image, 1) # Efecto espejo
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image_rgb.flags.writeable = False
+        
+        # 2. Procesar con MediaPipe
+        results = self.hands.process(image_rgb)
+        image_rgb.flags.writeable = True
+        
+        predicted_sign = "Esperando..."
+        confidence = 0.0
+        
+        # 3. Lógica de Detección y Predicción
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                landmarks_list = []
+                for landmark in hand_landmarks.landmark:
+                    # Extraer las 63 coordenadas (x, y, z)
+                    landmarks_list.extend([landmark.x, landmark.y, landmark.z])
+                
+                # Preprocesamiento para el modelo (63 features)
+                input_data = np.array(landmarks_list).flatten().astype('float32')
+                input_data = np.expand_dims(input_data, axis=0)
 
-# Columna 1 (Video y Seña en el frame): 70% del ancho
-# Columna 2 (Resultado Estabilizado y Confianza): 30% del ancho
+                # Predicción (Acceso a la variable global 'model')
+                prediction = model.predict(input_data, verbose=0) 
+                predicted_class_index = np.argmax(prediction)
+                confidence = prediction[0][predicted_class_index]
+                predicted_sign = CLASSES[predicted_class_index]
+                
+                # Dibujar los landmarks en la imagen
+                self.mp_drawing.draw_landmarks(
+                    image, 
+                    hand_landmarks, 
+                    self.mp_hands.HAND_CONNECTIONS,
+                    self.mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2), 
+                    self.mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=2)
+                )
+
+                # Visualización en el Frame (Usamos 'Sena' para evitar el error de codificación)
+                cv2.putText(image, 
+                            f"Sena: {predicted_sign}", 
+                            (50, 50), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 
+                            1.5, 
+                            (0, 255, 0), 
+                            3, 
+                            cv2.LINE_AA)
+        
+        # Opcional: El parpadeo en la columna 2 es inevitable sin lógica de hilo, 
+        # pero es útil ver el resultado fuera del frame.
+        try:
+            st.session_state.latest_prediction = (predicted_sign, confidence)
+        except Exception:
+             # Si no hay session_state (solo en el primer frame), lo ignoramos
+             pass
+             
+        # Devuelve el frame modificado como objeto AV
+        return av.VideoFrame.from_ndarray(image, format="bgr24")
+
+
+# --- 4. INTERFAZ Y WEBRTC ---
+
 col1, col2 = st.columns([7, 3])
 
+# La cámara se inicia automáticamente cuando se carga la página con el componente
 with col1:
-    st.markdown("#### Cámara en Vivo (MediaPipe)")
-    frame_placeholder = st.empty() # Placeholder para el video
+    st.markdown("#### Webcam en Vivo (MediaPipe)")
+    webrtc_ctx = webrtc_streamer(
+        key="sign_language_detector",
+        mode=WebRtcMode.SENDRECV,
+        video_processor_factory=HandSignProcessor,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
 
+# Columna 2: Resultados
 with col2:
     st.markdown("#### Predicción Estable")
-    # Usaremos un st.subheader para hacer la letra más grande y estable
     predicted_sign_display = st.subheader("Esperando...")
     st.markdown("---")
     st.markdown("##### Confianza de la Predicción")
     confidence_bar_placeholder = st.empty()
-
-
-# Inicializar el estado de la aplicación
-if 'running' not in st.session_state:
-    st.session_state.running = False
-
-# --- 5. FUNCIÓN PRINCIPAL DE PROCESAMIENTO ---
-def process_video():
-    cap = cv2.VideoCapture(0)
     
-    if not cap.isOpened():
-        st.error("No se pudo acceder a la cámara. Asegúrate de que no esté en uso.")
-        st.session_state.running = False
-        return
+    # Mostrar resultados actualizados fuera del hilo del procesador (Más estable)
+    if 'latest_prediction' not in st.session_state:
+        st.session_state.latest_prediction = ("Esperando...", 0.0)
 
-    with mp_hands.Hands(
-        model_complexity=1, 
-        min_detection_confidence=0.7, 
-        min_tracking_confidence=0.7) as hands:
-
-        st.sidebar.info("Cámara activa. Procesando frames...")
+    # El botón "Iniciar" del webrtc_streamer ya funciona como control,
+    # pero podemos mostrar el resultado de forma más estable aquí
+    
+    # Si el contexto de webrtc está activo (el usuario presionó Iniciar)
+    if webrtc_ctx.state.playing and 'latest_prediction' in st.session_state:
+        sign, conf = st.session_state.latest_prediction
         
-        # Variables de Estabilización (Opcional, pero mejora la experiencia)
-        # Aquí puedes implementar una lógica de historial si quieres evitar el parpadeo
-        
-        while st.session_state.running:
-            success, image = cap.read()
-            if not success: continue
+        # Actualizamos la visualización en la columna 2
+        predicted_sign_display.subheader(f"## **{sign}**")
+        confidence_bar_placeholder.progress(float(conf), text=f"Confianza: {conf:.2f}")
+    elif not webrtc_ctx.state.playing:
+        predicted_sign_display.subheader("Detenida.")
+        confidence_bar_placeholder.empty()
 
-            image = cv2.flip(image, 1)
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image_rgb.flags.writeable = False
-            
-            results = hands.process(image_rgb)
-            image_rgb.flags.writeable = True
-            
-            # --- LÓGICA DE DETECCIÓN Y PREDICCIÓN ---
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    # 1. Extracción de Landmarks (63 features)
-                    landmarks_list = []
-                    for landmark in hand_landmarks.landmark:
-                        landmarks_list.extend([landmark.x, landmark.y, landmark.z])
-                    
-                    # 2. Preprocesamiento
-                    input_data = np.array(landmarks_list).flatten().astype('float32')
-                    input_data = np.expand_dims(input_data, axis=0)
-
-                    # 3. Predicción
-                    prediction = model.predict(input_data, verbose=0)
-                    predicted_class_index = np.argmax(prediction)
-                    confidence = prediction[0][predicted_class_index]
-                    predicted_sign = CLASSES[predicted_class_index]
-                    
-                    # 4. Dibujar los landmarks
-                    mp_drawing.draw_landmarks(
-                        image, 
-                        hand_landmarks, 
-                        mp_hands.HAND_CONNECTIONS,
-                        mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2), 
-                        mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=2)
-                    )
-                    
-                    # 5. Visualización en el Frame (OpenCV - Letra Grande y Verde)
-                    cv2.putText(image, 
-                                f"Resultado: {predicted_sign}", 
-                                (50, 50), # Posición ajustada
-                                cv2.FONT_HERSHEY_SIMPLEX, 
-                                1.5, # Tamaño de fuente más grande
-                                (0, 255, 0), # Color Verde
-                                3, # Grosor de línea
-                                cv2.LINE_AA)
-                    
-                    # 6. Actualizar la Interfaz de Resultados (Columna 2)
-                    # Mostramos solo la letra predicha, el parpadeo ya no afecta tanto el texto
-                    predicted_sign_display.subheader(f"## **{predicted_sign}**")
-                    confidence_bar_placeholder.progress(float(confidence), text=f"Confianza: {confidence:.2f}")
-
-            else:
-                # Si no hay mano, limpiamos el resultado en la columna 2
-                predicted_sign_display.subheader("Esperando...")
-                confidence_bar_placeholder.empty()
-
-            # Mostrar el frame procesado en Streamlit (Columna 1)
-            # Usamos use_container_width=True para resolver la advertencia
-            frame_placeholder.image(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), channels="RGB", use_container_width=True)
-
-        # Fuera del bucle while: liberar recursos
-        cap.release()
-        st.session_state.running = False
-        st.sidebar.warning("Webcam Desactivada.")
-        
-# --- 6. INTERFAZ DE STREAMLIT (SIDEBAR) ---
-st.sidebar.header("Control y Ajustes")
-
-# Lógica del botón de encendido/apagado (Ahora más proporcional)
-if st.session_state.running:
-    # Si la app está corriendo, mostrar el botón de Detener
-    if st.sidebar.button("⏹️ DETENER WEBCAM", use_container_width=True, type="primary"):
-        st.session_state.running = False
-        st.rerun() 
-    process_video() 
-else:
-    # Si la app está detenida, mostrar el botón de Iniciar
-    if st.sidebar.button("▶️ INICIAR WEBCAM", use_container_width=True, type="primary"):
-        st.session_state.running = True
-        st.rerun() 
-    st.sidebar.info("Presiona 'INICIAR WEBCAM' para comenzar.")
-
+# --- 5. SIDEBAR FINAL ---
+st.sidebar.header("Estado del Proyecto")
 st.sidebar.markdown("---")
+st.sidebar.info("El botón 'Iniciar' de la cámara aparecerá en la columna izquierda, manejado por WebRTC.")
 st.sidebar.caption("Proyecto de Reconocimiento LSE | Desarrollado con Streamlit y MediaPipe.")
