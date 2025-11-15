@@ -99,6 +99,15 @@ class HandSignProcessor(VideoProcessorBase):
                             (0, 255, 0), 
                             3, 
                             cv2.LINE_AA)
+                
+                cv2.putText(image, 
+                            f"Confianza: {confidence*100:.1f}%", 
+                            (50, 130), # Posición Y más baja
+                            cv2.FONT_HERSHEY_SIMPLEX, 
+                            1.0, # Tamaño normal
+                            (255, 255, 0), # Color Amarillo
+                            2, 
+                            cv2.LINE_AA)
         
         try:
             st.session_state.latest_prediction = (predicted_sign, confidence)
