@@ -6,3 +6,4 @@ protobuf==3.20.3
 scikit-learn
 seaborn
 streamlit
+streamlit-webrtc
