@@ -134,31 +134,6 @@ with col1:
         async_processing=True,
     )
 
-# Columna 2: Resultados
-with col2:
-    st.markdown("#### Predicción Estable")
-    predicted_sign_display = st.subheader("Esperando...")
-    st.markdown("---")
-    st.markdown("##### Confianza de la Predicción")
-    confidence_bar_placeholder = st.empty()
-    
-    # Mostrar resultados actualizados fuera del hilo del procesador (Más estable)
-    if 'latest_prediction' not in st.session_state:
-        st.session_state.latest_prediction = ("Esperando...", 0.0)
-
-    # El botón "Iniciar" del webrtc_streamer ya funciona como control,
-    # pero podemos mostrar el resultado de forma más estable aquí
-    
-    # Si el contexto de webrtc está activo (el usuario presionó Iniciar)
-    if webrtc_ctx.state.playing and 'latest_prediction' in st.session_state:
-        sign, conf = st.session_state.latest_prediction
-        
-        # Actualizamos la visualización en la columna 2
-        predicted_sign_display.subheader(f"## **{sign}**")
-        confidence_bar_placeholder.progress(float(conf), text=f"Confianza: {conf:.2f}")
-    elif not webrtc_ctx.state.playing:
-        predicted_sign_display.subheader("Detenida.")
-        confidence_bar_placeholder.empty()
 
 # --- 5. SIDEBAR FINAL ---
 st.sidebar.markdown("---")
