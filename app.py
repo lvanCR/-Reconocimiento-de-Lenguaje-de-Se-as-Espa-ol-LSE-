@@ -92,7 +92,7 @@ class HandSignProcessor(VideoProcessorBase):
 
                 # Visualización en el Frame (Usamos 'Sena' para evitar el error de codificación)
                 cv2.putText(image, 
-                            f"Sena: {predicted_sign}", 
+                            f"Resultado: {predicted_sign}", 
                             (50, 50), 
                             cv2.FONT_HERSHEY_SIMPLEX, 
                             1.5, 
