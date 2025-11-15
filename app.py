@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
+st.markdown('''
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500&display=swap');
     :root { --primary: #667eea; --secondary: #764ba2; --light: #f8f9fa; --dark: #2c3e50; }
@@ -22,14 +22,14 @@ st.markdown("""
     .stButton>button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; padding: 10px 20px; font-weight:600; }
     .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 8px 15px rgba(102,126,234,0.3); }
 </style>
-""", unsafe_allow_html=True)
+''', unsafe_allow_html=True)
 
-st.markdown("""
+st.markdown('''
 <div style='text-align: center; padding: 30px 0;'>
     <h1 style='font-size: 3em; color: #667eea; margin: 0;'>🤟 Reconocimiento LSE</h1>
     <p style='font-size: 1.1em; color: #555; margin: 8px 0 0 0;'>Lenguaje de Señas Español en Tiempo Real</p>
 </div>
-""", unsafe_allow_html=True)
+''', unsafe_allow_html=True)
 
 # --- Constantes y modelo ---
 MODEL_PATH = "sign_language_mlp_model.h5"
@@ -165,12 +165,12 @@ st.markdown("---")
 
 st.sidebar.markdown("---")
 with st.sidebar:
-    st.markdown("""
+    st.markdown('''
     <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                 padding: 12px; border-radius: 10px; color: white; margin-bottom: 16px;'>
         <h3 style='margin:0'>⚙️ Configuración</h3>
     </div>
-    """, unsafe_allow_html=True)
+    ''', unsafe_allow_html=True)
 
     with st.expander("🎯 Detalles del Modelo"):
         st.write(f"**Clases:** {len(CLASSES)} letras")
@@ -186,13 +186,13 @@ with st.sidebar:
         """)
 
     st.markdown("---")
-    st.markdown("""
+    st.markdown('''
     <div style='text-align: center; padding: 10px; border-radius: 8px; background: #f0f2f6;'>
         <p style='margin: 0; font-size: 0.85em; color: #666;'>
             🤟 <strong>LSE Recognition</strong><br>Streamlit + MediaPipe + TensorFlow
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    ''', unsafe_allow_html=True)
 
 
 # --- 5. SIDEBAR FINAL ---
