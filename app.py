@@ -3,13 +3,10 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import tensorflow as tf
-import av # Necesario para manejar frames con streamlit-webrtc
-
-# Librería para la cámara estable en entorno web
+import av
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode 
 
 
-# --- 1. CONFIGURACIÓN BÁSICA DE STREAMLIT ---
 st.set_page_config(
     page_title="Reconocimiento LSE en Tiempo Real",
     page_icon="🤟",
@@ -17,14 +14,13 @@ st.set_page_config(
 )
 
 st.title("🤟 Reconocimiento de Lenguaje de Señas Español (LSE)")
-st.markdown("### Detección y Clasificación en Tiempo Real con WebRTC")
+st.markdown("### Detección y Clasificación en Tiempo Real")
 
 
 # --- 2. CARGAR EL MODELO ENTRENADO ---
 MODEL_PATH = 'sign_language_mlp_model.h5' 
 @st.cache_resource
 def load_model():
-    """Carga el modelo una sola vez y lo almacena en caché."""
     try:
         model = tf.keras.models.load_model(MODEL_PATH)
         st.sidebar.success("✅ Modelo cargado correctamente.")
@@ -35,13 +31,11 @@ def load_model():
 
 model = load_model()
 
-# Definir las clases (Asegúrate que 'Ñ' esté en el índice correcto según tu entrenamiento)
-CLASSES = np.array(['A','B','C','D','E','F','G','I','K','L','M','N','O','P','Q','R','S','T','U', 'Ñ']) 
+CLASSES = np.array(['A','B','C','D','E','F','G','I','K','L','M','N','O','P','Q','R','S','T','U']) 
 
 # --- 3. CLASE PARA PROCESAR EL VIDEO EN TIEMPO REAL (WEBRTC) ---
 
 class HandSignProcessor(VideoProcessorBase):
-    """Procesa cada frame de video, detecta landmarks y predice la seña."""
     
     def __init__(self):
         # Inicializar MediaPipe Hands
@@ -53,7 +47,6 @@ class HandSignProcessor(VideoProcessorBase):
         self.mp_drawing = mp.solutions.drawing_utils
         
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        """Método llamado por streamlit-webrtc para cada frame."""
         
         # Convertir el frame de AV (WebRTC) a un array NumPy (BGR)
         image = frame.to_ndarray(format="bgr24")
@@ -107,8 +100,6 @@ class HandSignProcessor(VideoProcessorBase):
                             3, 
                             cv2.LINE_AA)
         
-        # Opcional: El parpadeo en la columna 2 es inevitable sin lógica de hilo, 
-        # pero es útil ver el resultado fuera del frame.
         try:
             st.session_state.latest_prediction = (predicted_sign, confidence)
         except Exception:
@@ -161,7 +152,5 @@ with col2:
         confidence_bar_placeholder.empty()
 
 # --- 5. SIDEBAR FINAL ---
-st.sidebar.header("Estado del Proyecto")
 st.sidebar.markdown("---")
-st.sidebar.info("El botón 'Iniciar' de la cámara aparecerá en la columna izquierda, manejado por WebRTC.")
 st.sidebar.caption("Proyecto de Reconocimiento LSE | Desarrollado con Streamlit y MediaPipe.")
